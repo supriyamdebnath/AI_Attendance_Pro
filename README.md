@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # AI Attendance Pro
 
 Production-oriented Flask attendance dashboard with role-based authentication, threaded OpenCV face recognition, SQLite persistence, live monitoring, attendance snapshots, reports, avatar profiles, Gmail OTP password reset, and a responsive dark blue SaaS UI.
@@ -133,3 +134,7 @@ Admins can:
 - Run behind a real WSGI server and reverse proxy.
 - Store environment values outside source control.
 - For mobile apps, the backend routes and exports are ready to be wrapped behind token-based APIs later without changing the core data model.
+=======
+# AI_Attendance_Pro
+
+>>>>>>> f78c6837f51d94bf10b61b02e3c96f32d89955cf
