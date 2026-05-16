@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 import io
+import base64
+import json
 import os
 import secrets
 import shutil
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import wraps
 from pathlib import Path
-from threading import Lock, Thread
-from time import perf_counter, sleep
+from queue import Empty, Queue
+from threading import Lock
+from time import perf_counter
 from typing import Callable
 
 import cv2
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from flask import (
     Flask,
-    Response,
     flash,
     jsonify,
     redirect,
@@ -28,6 +31,7 @@ from flask import (
     session,
     url_for,
 )
+from flask_sock import Sock
 from sqlalchemy import func, or_
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -39,7 +43,7 @@ except ImportError:  # Keeps local tools usable until requirements are installed
     Mail = None
     Message = None
 
-from capture import capture_faces
+from capture import capture_faces, save_face_sample_from_frame
 from database import ATTENDANCE_CSV, DB_PATH, Attendance, SystemLog, User, configure_database, db, ensure_csv_header, migrate_schema
 from recognize import annotate_frame, last_event, save_snapshot
 from train import TRAINER_PATH, train_model
@@ -66,68 +70,35 @@ app.config["MAIL_DEFAULT_SENDER"] = os.getenv("MAIL_DEFAULT_SENDER", os.getenv("
 configure_database(app)
 mail = Mail(app) if Mail else None
 serializer = URLSafeTimedSerializer(app.config["SECRET_KEY"])
+sock = Sock(app)
 
 camera_lock = Lock()
+latest_frame_lock = Lock()
+live_clients_lock = Lock()
+# Browser clients own camera hardware through getUserMedia. Render receives
+# sampled frames only, which keeps recognition cloud-compatible and avoids
+# requiring a physical webcam inside the hosted container.
 camera_enabled = False
 recognition_status = "Camera idle"
+latest_browser_frame = None
+latest_frame_at = 0.0
+live_clients: set[Queue[str]] = set()
 
 
-class ThreadedCamera:
-    """Keeps webcam reads off request threads for smoother MJPEG streaming."""
-
-    def __init__(self, source: int = 0):
-        self.source = source
-        self.capture = None
-        self.frame = None
-        self.ok = False
-        self.running = False
-        self.lock = Lock()
-        self.worker: Thread | None = None
-
-    def start(self) -> bool:
-        if self.running:
-            return True
-        # Render/Linux hosts usually do not expose a physical webcam. The route
-        # fails gracefully there, while local Windows keeps the DirectShow path.
-        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
-        self.capture = cv2.VideoCapture(self.source, backend)
-        if not self.capture or not self.capture.isOpened():
-            self.stop()
-            return False
-        self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, 960)
-        self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 540)
-        self.capture.set(cv2.CAP_PROP_FPS, 30)
-        self.capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.running = True
-        self.worker = Thread(target=self._reader, daemon=True)
-        self.worker.start()
-        return True
-
-    def _reader(self) -> None:
-        while self.running and self.capture and self.capture.isOpened():
-            ok, frame = self.capture.read()
-            if ok:
-                with self.lock:
-                    self.ok = True
-                    self.frame = frame
-
-    def read(self):
-        with self.lock:
-            if self.frame is None:
-                return False, None
-            return self.ok, self.frame.copy()
-
-    def stop(self) -> None:
-        self.running = False
-        if self.capture is not None:
-            self.capture.release()
-        self.capture = None
-        with self.lock:
-            self.frame = None
-            self.ok = False
-
-
-camera_stream = ThreadedCamera()
+def broadcast_live(payload: dict) -> None:
+    message = json.dumps(payload, default=str)
+    stale: list[Queue[str]] = []
+    with live_clients_lock:
+        clients = list(live_clients)
+    for client in clients:
+        try:
+            client.put_nowait(message)
+        except Exception:
+            stale.append(client)
+    if stale:
+        with live_clients_lock:
+            for client in stale:
+                live_clients.discard(client)
 
 
 def bootstrap_runtime() -> None:
@@ -172,6 +143,27 @@ def bootstrap_runtime() -> None:
 bootstrap_runtime()
 
 
+def decode_browser_frame(image_data: str | None):
+    if not image_data:
+        return None
+    if "," in image_data:
+        _prefix, image_data = image_data.split(",", 1)
+    try:
+        raw = base64.b64decode(image_data, validate=True)
+    except (ValueError, TypeError):
+        return None
+    array = np.frombuffer(raw, dtype=np.uint8)
+    return cv2.imdecode(array, cv2.IMREAD_COLOR)
+
+
+def camera_event_payload(event: dict | None = None) -> dict:
+    payload = dict(event or last_event)
+    payload["enabled"] = camera_enabled
+    payload["camera"] = "Camera ON" if camera_enabled else "Camera OFF"
+    payload["message"] = payload.get("message") or (recognition_status if camera_enabled else "Camera idle")
+    return payload
+
+
 def current_user() -> User | None:
     user_id = session.get("user_id")
     return db.session.get(User, user_id) if user_id else None
@@ -209,43 +201,91 @@ def attendance_percent(user_id: int) -> int:
     return min(round((attended / days_elapsed) * 100), 100)
 
 
-def dashboard_metrics() -> dict[str, object]:
+def dashboard_period_bounds(period: str = "daily") -> tuple[date, date]:
     today = date.today()
-    total_attendance = Attendance.query.count()
-    successful_accuracy = db.session.query(func.avg(Attendance.recognition_accuracy)).scalar() or 0
+    if period == "weekly":
+        return today - timedelta(days=6), today
+    if period == "monthly":
+        return today.replace(day=1), today
+    return today, today
+
+
+def period_attendance_query(period: str = "daily"):
+    start, end = dashboard_period_bounds(period)
+    return Attendance.query.filter(Attendance.date >= start, Attendance.date <= end)
+
+
+def dashboard_metrics(period: str = "daily") -> dict[str, object]:
+    today = date.today()
+    total_attendance = period_attendance_query(period).count()
+    successful_accuracy = period_attendance_query(period).with_entities(func.avg(Attendance.recognition_accuracy)).scalar() or 0
+    total_people = max(User.query.filter(User.role.in_(["student", "employee"])).count(), 1)
+    present_today = Attendance.query.filter_by(date=today).count()
+    late_after = time(9, 30)
+    late_checkins = Attendance.query.filter(Attendance.date == today, Attendance.time > late_after).count()
+    attendance_rate = min(round((present_today / total_people) * 100), 100)
     return {
         "users": User.query.count(),
         "active_users": db.session.query(Attendance.user_id).filter_by(date=today).distinct().count(),
         "admins": User.query.filter_by(role="admin").count(),
         "students": User.query.filter_by(role="student").count(),
         "employees": User.query.filter_by(role="employee").count(),
-        "today_present": Attendance.query.filter_by(date=today).count(),
+        "today_present": present_today,
+        "attendance_rate": attendance_rate,
+        "late_checkins": late_checkins,
         "success_rate": round(successful_accuracy or (100 if total_attendance else 0)),
         "camera": "Camera ON" if camera_enabled else "Camera OFF",
         "trained": TRAINER_PATH.exists(),
+        "period": period,
     }
 
 
-def attendance_chart_payload(user_id: int | None = None) -> dict[str, list]:
+def attendance_chart_payload(user_id: int | None = None, period: str = "monthly") -> dict[str, list]:
     query = Attendance.query
     if user_id:
         query = query.filter_by(user_id=user_id)
+    else:
+        start, end = dashboard_period_bounds(period)
+        query = query.filter(Attendance.date >= start, Attendance.date <= end)
     rows = query.order_by(Attendance.date.asc()).all()
     counter = Counter(row.date.isoformat() for row in rows)
     return {"labels": list(counter.keys()), "values": list(counter.values())}
 
 
-def role_chart_payload() -> dict[str, list]:
-    rows = db.session.query(Attendance.role, func.count(Attendance.id)).group_by(Attendance.role).all()
+def role_chart_payload(period: str = "monthly") -> dict[str, list]:
+    start, end = dashboard_period_bounds(period)
+    rows = (
+        db.session.query(Attendance.role, func.count(Attendance.id))
+        .filter(Attendance.date >= start, Attendance.date <= end)
+        .group_by(Attendance.role)
+        .all()
+    )
     return {"labels": [role.title() for role, _count in rows], "values": [count for _role, count in rows]}
 
 
-def accuracy_chart_payload() -> dict[str, list]:
-    rows = Attendance.query.order_by(Attendance.created_at.asc()).limit(30).all()
+def accuracy_chart_payload(period: str = "monthly") -> dict[str, list]:
+    start, end = dashboard_period_bounds(period)
+    rows = Attendance.query.filter(Attendance.date >= start, Attendance.date <= end).order_by(Attendance.created_at.asc()).limit(30).all()
     return {
         "labels": [row.date.isoformat() for row in rows],
         "values": [row.recognition_accuracy for row in rows],
     }
+
+
+def ai_insights(period: str = "daily") -> list[dict[str, str]]:
+    metrics = dashboard_metrics(period)
+    insights: list[dict[str, str]] = []
+    if not metrics["trained"]:
+        insights.append({"title": "Model training needed", "detail": "Train the recognition model after enrolling face samples."})
+    if metrics["attendance_rate"] < 75:
+        insights.append({"title": "Attendance below target", "detail": f"{metrics['attendance_rate']}% attendance today. Review absentees and late arrivals."})
+    if metrics["late_checkins"]:
+        insights.append({"title": "Late arrivals detected", "detail": f"{metrics['late_checkins']} late check-ins after 09:30 today."})
+    if metrics["success_rate"] >= 85:
+        insights.append({"title": "Recognition healthy", "detail": f"Average recognition accuracy is {metrics['success_rate']}% for the selected period."})
+    if not insights:
+        insights.append({"title": "System stable", "detail": "Attendance, camera, and recognition metrics are operating normally."})
+    return insights[:4]
 
 
 def avatar_filename(user: User | None) -> str:
@@ -269,6 +309,7 @@ def inject_globals():
         "csrf_token": session["csrf_token"],
         "notification_count": "99+" if unseen > 99 else unseen,
         "notifications": notification_items(8) if user else [],
+        "system_status": "Ready" if TRAINER_PATH.exists() else "Training Required",
     }
 
 
@@ -468,6 +509,9 @@ def send_otp_email(address: str, otp: str) -> None:
 @app.route("/admin")
 @admin_required
 def admin_dashboard():
+    period = request.args.get("period", "daily")
+    if period not in {"daily", "weekly", "monthly"}:
+        period = "daily"
     recent = Attendance.query.order_by(Attendance.date.desc(), Attendance.time.desc()).limit(8).all()
     users = User.query.order_by(User.created_at.desc()).limit(8).all()
     logs = SystemLog.query.order_by(SystemLog.timestamp.desc()).limit(6).all()
@@ -475,12 +519,14 @@ def admin_dashboard():
     today_present = Attendance.query.filter_by(date=date.today()).count()
     return render_template(
         "admin_dashboard.html",
-        metrics=dashboard_metrics(),
+        metrics=dashboard_metrics(period),
         recent=recent,
         users=users,
-        chart=attendance_chart_payload(),
-        role_chart=role_chart_payload(),
-        accuracy_chart=accuracy_chart_payload(),
+        chart=attendance_chart_payload(period=period),
+        role_chart=role_chart_payload(period),
+        accuracy_chart=accuracy_chart_payload(period),
+        insights=ai_insights(period),
+        period=period,
         logs=logs,
         attendance_percentage=min(round((today_present / total_possible) * 100), 100),
         camera_enabled=camera_enabled,
@@ -495,12 +541,15 @@ def user_dashboard():
     if user.role == "admin":
         return redirect(url_for("admin_dashboard"))
     history = Attendance.query.filter_by(user_id=user.id).order_by(Attendance.date.desc()).limit(12).all()
+    today_attendance = Attendance.query.filter_by(user_id=user.id, date=date.today()).first()
     return render_template(
         "user_dashboard.html",
         history=history,
         percentage=attendance_percent(user.id),
         chart=attendance_chart_payload(user.id),
         last_attendance=history[0] if history else None,
+        today_attendance=today_attendance,
+        today_date=date.today(),
     )
 
 
@@ -538,6 +587,13 @@ def profile():
                 user.avatar = filename
             else:
                 flash("Upload PNG, JPG, JPEG, or WEBP avatars.", "warning")
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if password:
+            if len(password) < 8 or password != confirm_password:
+                flash("Use at least 8 characters and make both passwords match.", "warning")
+                return redirect(url_for("profile"))
+            user.password = generate_password_hash(password)
         db.session.commit()
         flash("Profile updated.", "success")
         return redirect(url_for("profile"))
@@ -689,6 +745,48 @@ def capture_user(user_id: int):
     return redirect(url_for("add_user"))
 
 
+@app.post("/api/users/<int:user_id>/face-sample")
+@admin_required
+def browser_face_sample(user_id: int):
+    if not db.session.get(User, user_id):
+        return jsonify({"ok": False, "message": "User not found."}), 404
+    payload = request.get_json(silent=True) or {}
+    frame = decode_browser_frame(payload.get("image"))
+    if frame is None:
+        return jsonify({"ok": False, "message": "Invalid camera frame."}), 400
+    result = save_face_sample_from_frame(user_id, frame)
+    if result["ok"]:
+        write_log(f"Browser face sample captured for user #{user_id}", current_user().id if current_user() else None)
+        db.session.commit()
+    return jsonify(result), 200 if result["ok"] else 422
+
+
+def dashboard_payload(period: str = "daily") -> dict:
+    if period not in {"daily", "weekly", "monthly"}:
+        period = "daily"
+    recent = Attendance.query.order_by(Attendance.date.desc(), Attendance.time.desc()).limit(8).all()
+    return {
+        "metrics": dashboard_metrics(period),
+        "chart": attendance_chart_payload(period=period),
+        "role_chart": role_chart_payload(period),
+        "accuracy_chart": accuracy_chart_payload(period),
+        "insights": ai_insights(period),
+        "recent": [
+            {
+                "name": row.name,
+                "role": row.role,
+                "id_number": row.id_number or (row.user.id_number if row.user else row.user_id),
+                "date": row.date.isoformat(),
+                "time": row.time.strftime("%H:%M:%S"),
+                "status": row.status,
+                "accuracy": row.recognition_accuracy,
+                "snapshot_path": row.snapshot_path,
+            }
+            for row in recent
+        ],
+    }
+
+
 @app.post("/train")
 @admin_required
 def train_from_dashboard():
@@ -696,82 +794,71 @@ def train_from_dashboard():
     return jsonify(result), 200 if result["ok"] else 400
 
 
-def get_camera():
-    return camera_stream
-
-
 def stop_camera() -> None:
-    global camera_enabled, recognition_status
+    global camera_enabled, recognition_status, latest_browser_frame, latest_frame_at
     with camera_lock:
         camera_enabled = False
         recognition_status = "Camera idle"
+        latest_frame_at = 0.0
+        with latest_frame_lock:
+            latest_browser_frame = None
         last_event.clear()
         last_event.update({"state": "idle", "message": "Camera idle", "camera": "Camera OFF", "fps": 0})
-        camera_stream.stop()
+    broadcast_live({"type": "camera", "event": camera_event_payload()})
 
 
 @app.post("/camera/start")
 @admin_required
 def camera_start():
     global camera_enabled, recognition_status
-    device = get_camera()
-    if not device.start():
-        stop_camera()
-        return jsonify({"ok": False, "message": "Webcam unavailable."}), 503
-    ok, _frame = False, None
-    for _attempt in range(12):
-        ok, _frame = device.read()
-        if ok:
-            break
-        sleep(0.05)
-    if not ok:
-        stop_camera()
-        return jsonify({"ok": False, "message": "Camera opened, but no video frame was received."}), 503
-    camera_enabled = True
-    recognition_status = "Camera active"
+    with camera_lock:
+        camera_enabled = True
+        recognition_status = "Waiting for browser camera"
     last_event.clear()
-    last_event.update({"state": "scanning", "message": "Camera active", "camera": "Camera ON", "fps": 0})
-    write_log("Camera ON", current_user().id if current_user() else None)
+    last_event.update({"state": "scanning", "message": "Waiting for browser camera", "camera": "Camera ON", "fps": 0})
+    write_log("Browser camera session started", current_user().id if current_user() else None)
     db.session.commit()
-    return jsonify({"ok": True, "message": "Camera started."})
+    event = camera_event_payload()
+    broadcast_live({"type": "camera", "event": event, "summary": dashboard_payload()})
+    return jsonify({"ok": True, "message": "Browser camera ready.", "event": event})
 
 
 @app.post("/camera/stop")
 @admin_required
 def camera_stop():
     stop_camera()
-    write_log("Camera OFF", current_user().id if current_user() else None)
+    write_log("Browser camera session stopped", current_user().id if current_user() else None)
     db.session.commit()
     return jsonify({"ok": True, "message": "Camera stopped."})
 
 
-def frame_generator():
-    global recognition_status
-    previous = perf_counter()
-    while camera_enabled:
-        device = get_camera()
-        if not camera_stream.running:
-            recognition_status = "Camera unavailable"
-            break
-        ok, frame = device.read()
-        if not ok:
-            recognition_status = "Frame read failed"
-            break
-        now = perf_counter()
-        fps = 1 / max(now - previous, 0.001)
-        previous = now
-        frame, recognition_status, _event = annotate_frame(frame, app.app_context, fps)
-        ok, buffer = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 84])
-        if not ok:
-            continue
-        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
-    stop_camera()
-
-
-@app.route("/video-feed")
+@app.post("/api/camera/frame")
 @admin_required
-def video_feed():
-    return Response(frame_generator(), mimetype="multipart/x-mixed-replace; boundary=frame")
+def camera_frame():
+    global latest_browser_frame, latest_frame_at, recognition_status
+    if not camera_enabled:
+        return jsonify({"ok": False, "message": "Camera is off."}), 409
+    payload = request.get_json(silent=True) or {}
+    frame = decode_browser_frame(payload.get("image"))
+    if frame is None:
+        return jsonify({"ok": False, "message": "Invalid camera frame."}), 400
+
+    now = perf_counter()
+    fps = float(payload.get("fps") or 0)
+    if not fps and latest_frame_at:
+        fps = 1 / max(now - latest_frame_at, 0.001)
+    latest_frame_at = now
+    with latest_frame_lock:
+        latest_browser_frame = frame.copy()
+
+    _annotated, status, event = annotate_frame(frame, app.app_context, fps)
+    recognition_status = event.get("message") or status or "Scanning"
+    event = camera_event_payload(event)
+    payload = {"type": "camera", "event": event}
+    if event.get("state") == "recognized":
+        payload["summary"] = dashboard_payload()
+    broadcast_live(payload)
+    return jsonify({"ok": True, "event": event})
 
 
 @app.route("/camera")
@@ -789,30 +876,54 @@ def live_monitoring():
 @app.get("/api/camera/status")
 @admin_required
 def camera_status():
-    event = dict(last_event)
-    event["enabled"] = camera_enabled
-    event["camera"] = "Camera ON" if camera_enabled else "Camera OFF"
-    event["message"] = recognition_status if camera_enabled else "Camera idle"
-    return jsonify(event)
+    return jsonify(camera_event_payload())
+
+
+@sock.route("/ws/live")
+def live_updates(ws):
+    user = current_user()
+    if not user or user.role != "admin":
+        ws.close()
+        return
+    client: Queue[str] = Queue(maxsize=20)
+    with live_clients_lock:
+        live_clients.add(client)
+    try:
+        ws.send(json.dumps({"type": "camera", "event": camera_event_payload(), "summary": dashboard_payload()}))
+        while True:
+            try:
+                message = client.get(timeout=25)
+            except Empty:
+                message = json.dumps({"type": "heartbeat", "event": camera_event_payload()})
+            ws.send(message)
+    except Exception:
+        pass
+    finally:
+        with live_clients_lock:
+            live_clients.discard(client)
 
 
 @app.post("/camera/snapshot")
 @admin_required
 def camera_snapshot():
-    device = get_camera()
-    if not camera_enabled or not device.running:
+    global latest_browser_frame
+    payload = request.get_json(silent=True) or {}
+    frame = decode_browser_frame(payload.get("image"))
+    if frame is None:
+        with latest_frame_lock:
+            frame = latest_browser_frame.copy() if latest_browser_frame is not None else None
+    if not camera_enabled or frame is None:
         return jsonify({"ok": False, "message": "Camera is off. Start live monitoring first."}), 409
-    ok, frame = device.read()
-    if not ok:
-        return jsonify({"ok": False, "message": "Unable to capture a camera frame."}), 503
     path = save_snapshot(frame, None)
-    retake = request.args.get("retake") == "1" or request.form.get("retake") == "1"
+    retake = request.args.get("retake") == "1" or payload.get("retake") is True
     record = Attendance.query.order_by(Attendance.date.desc(), Attendance.time.desc()).first()
     if record and (retake or not record.snapshot_path):
         record.snapshot_path = path
     write_log("Snapshot retaken" if retake else "Snapshot captured", current_user().id if current_user() else None)
     db.session.commit()
-    return jsonify({"ok": True, "message": "Snapshot captured.", "snapshot_path": path})
+    event = camera_event_payload({"state": "snapshot", "message": "Snapshot retaken" if retake else "Snapshot captured", "snapshot_path": path})
+    broadcast_live({"type": "camera", "event": event, "summary": dashboard_payload()})
+    return jsonify({"ok": True, "message": "Snapshot captured.", "snapshot_path": path, "event": event})
 
 
 @app.get("/api/notifications")
@@ -823,31 +934,17 @@ def api_notifications():
     return jsonify({"count": 0, "items": notification_items(20)})
 
 
+@app.post("/api/notifications/clear")
+@login_required
+def clear_notifications():
+    session["notification_seen_count"] = SystemLog.query.count()
+    return jsonify({"ok": True, "count": 0, "items": []})
+
+
 @app.get("/api/dashboard/summary")
 @admin_required
 def dashboard_summary():
-    recent = Attendance.query.order_by(Attendance.date.desc(), Attendance.time.desc()).limit(8).all()
-    return jsonify(
-        {
-            "metrics": dashboard_metrics(),
-            "chart": attendance_chart_payload(),
-            "role_chart": role_chart_payload(),
-            "accuracy_chart": accuracy_chart_payload(),
-            "recent": [
-                {
-                    "name": row.name,
-                    "role": row.role,
-                    "id_number": row.id_number or (row.user.id_number if row.user else row.user_id),
-                    "date": row.date.isoformat(),
-                    "time": row.time.strftime("%H:%M:%S"),
-                    "status": row.status,
-                    "accuracy": row.recognition_accuracy,
-                    "snapshot_path": row.snapshot_path,
-                }
-                for row in recent
-            ],
-        }
-    )
+    return jsonify(dashboard_payload(request.args.get("period", "daily")))
 
 
 @app.get("/api/users/search")
@@ -869,6 +966,52 @@ def search_users():
         for user in query.order_by(User.full_name.asc()).limit(20).all()
     ]
     return jsonify(items)
+
+
+@app.get("/api/search")
+@login_required
+def global_search():
+    term = request.args.get("q", "").strip()
+    if len(term) < 2:
+        return jsonify({"items": []})
+    like = f"%{term}%"
+    items: list[dict[str, str]] = []
+    users = User.query.filter(
+        (User.username.ilike(like))
+        | (User.full_name.ilike(like))
+        | (User.email.ilike(like))
+        | (User.role.ilike(like))
+        | (User.id_number.ilike(like))
+    ).order_by(User.full_name.asc()).limit(6).all()
+    for user in users:
+        items.append(
+            {
+                "type": "User",
+                "title": user.full_name or user.username,
+                "detail": f"{user.role.title()} - {user.id_number}",
+                "url": url_for("add_user") if current_user().role == "admin" else url_for("profile"),
+            }
+        )
+    attendance_query = Attendance.query.filter(
+        (Attendance.name.ilike(like))
+        | (Attendance.role.ilike(like))
+        | (Attendance.id_number.ilike(like))
+        | (Attendance.status.ilike(like))
+    )
+    if current_user().role != "admin":
+        attendance_query = attendance_query.filter_by(user_id=current_user().id)
+    for row in attendance_query.order_by(Attendance.date.desc(), Attendance.time.desc()).limit(6).all():
+        items.append(
+            {
+                "type": "Attendance",
+                "title": row.name,
+                "detail": f"{row.id_number} - {row.date.isoformat()} - {row.status}",
+                "url": url_for("attendance_view"),
+            }
+        )
+    if current_user().role == "admin" and any(term.lower() in word for word in ["report", "reports", "csv", "pdf", "export"]):
+        items.append({"type": "Report", "title": "Attendance Reports", "detail": "CSV, Excel, and PDF exports", "url": url_for("reports")})
+    return jsonify({"items": items[:10]})
 
 
 def report_dataframe() -> pd.DataFrame:

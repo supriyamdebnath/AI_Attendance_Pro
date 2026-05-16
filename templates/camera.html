@@ -29,7 +29,8 @@
             </div>
           </div>
           <div class="camera-stage camera-stage-large live-stage" data-camera-stage>
-            <img data-video-feed class="camera-frame" alt="Live webcam recognition feed">
+            <video data-browser-camera class="camera-frame" autoplay playsinline muted></video>
+            <canvas data-camera-canvas class="camera-canvas" width="960" height="540" aria-hidden="true"></canvas>
             <div class="camera-placeholder" data-camera-placeholder>
               <strong>Live recognition feed</strong>
               <span>Press Camera ON to start secure attendance monitoring.</span>

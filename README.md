@@ -1,11 +1,11 @@
 # AI Attendance Pro
 
-Production-ready Flask attendance dashboard with role-based authentication, threaded OpenCV face recognition, SQLite persistence, live monitoring, attendance snapshots, reports, avatar profiles, Gmail OTP password reset, and a responsive SaaS-style UI.
+Production-ready Flask attendance dashboard with role-based authentication, browser-based camera capture, OpenCV face recognition, SQLite persistence, live monitoring, attendance snapshots, reports, avatar profiles, Gmail OTP password reset, websocket live updates, and a responsive SaaS-style UI.
 
 ## Stack
 
 - Python 3.11
-- Flask, Flask-SQLAlchemy, Gunicorn
+- Flask, Flask-SQLAlchemy, Flask-Sock, Gunicorn
 - SQLite for the current lightweight deployment profile
 - OpenCV Haarcascade + LBPH recognizer via `opencv-contrib-python-headless`
 - Bootstrap 5, Chart.js, custom CSS/JavaScript
@@ -60,15 +60,15 @@ Change the default password immediately in any real deployment.
 
 This project is prepared for Render using:
 
-- `Procfile`: `web: gunicorn app:app`
+- `Procfile`: `web: gunicorn --threads 4 --timeout 120 app:app`
 - `runtime.txt`: Python 3.11
-- `requirements.txt`: includes Gunicorn and headless OpenCV contrib support
+- `requirements.txt`: includes Gunicorn, websocket support, and headless OpenCV contrib support
 
 Recommended Render settings:
 
 - Environment: Python
 - Build command: `pip install -r requirements.txt`
-- Start command: `gunicorn app:app`
+- Start command: `gunicorn --threads 4 --timeout 120 app:app`
 - Required env var: `SECRET_KEY`
 - Optional SMTP env vars: `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`
 
@@ -76,15 +76,27 @@ Render free tier notes:
 
 - The free filesystem is ephemeral. Runtime files such as `users.db`, snapshots, reports, and `trainer/trainer.yml` can disappear after redeploys or restarts.
 - For demos, this lightweight SQLite setup is fine. For production, move persistence to Render PostgreSQL or another managed database and use object storage for snapshots/training artifacts.
-- Webcam access is normally unavailable inside hosted Render containers. Live camera recognition works best on local machines, edge devices, or a browser-upload/websocket camera flow.
+- Camera access is browser-based through `navigator.mediaDevices.getUserMedia()`. The Render server receives sampled frames through API calls and pushes recognition state through websockets, so it does not need local webcam hardware.
 - `opencv-contrib-python-headless` is used intentionally. It keeps LBPH recognition support while avoiding GUI OpenCV libraries that often fail on server hosts.
+
+## Browser Camera Architecture
+
+```text
+Browser Camera
+-> /api/camera/frame
+-> OpenCV Face Recognition Engine
+-> Attendance Database + CSV Reports
+-> /ws/live Dashboard Updates
+```
+
+The browser owns camera permissions and live preview. The backend only receives compressed JPEG frames, recognizes faces, marks attendance, saves snapshots, and broadcasts dashboard updates. This is the cloud-compatible path for Render and commercial SaaS hosting.
 
 ## Face Workflow
 
 1. Sign in as admin.
 2. Add a user with full name, username, email, password, ID number, role, and optional avatar.
-3. Click Capture to collect face samples from the webcam.
-4. Train the model from the dashboard or run `python train.py`.
+3. Click Capture to collect face samples from the browser camera.
+4. The browser capture flow trains the model after enrollment, or you can run `python train.py`.
 5. Open Live Monitoring.
 6. Recognized users are marked present once per day in SQLite, `attendance.csv`, and `Attendance/attendance_<year>.csv`.
 7. Snapshots are saved in `static/snapshots/` and linked to attendance rows.
@@ -107,7 +119,7 @@ The `.gitkeep` files preserve required runtime folders without committing genera
 
 - `opencv-contrib-python is required for LBPH training`: install from `requirements.txt`; the headless contrib package provides `cv2.face`.
 - `No captured face images found`: capture user samples first.
-- `Webcam unavailable`: close other camera apps locally; hosted Render containers typically cannot access a physical webcam.
+- Browser camera blocked: serve the app over HTTPS or localhost and allow camera permission in the browser.
 - `trainer.yml missing`: train the model after collecting samples.
 - SMTP errors: confirm Gmail app password and mail environment variables.
 

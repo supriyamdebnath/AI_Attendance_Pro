@@ -35,7 +35,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label" for="new-password">Password</label>
-              <input id="new-password" type="password" name="password" class="form-control" placeholder="Create a secure password" required>
+              <div class="password-field"><input id="new-password" type="password" name="password" class="form-control" placeholder="Create a secure password" autocomplete="new-password" required><button type="button" data-toggle-password aria-label="Show password"></button></div>
             </div>
             <div class="col-md-6">
               <label class="form-label" for="new-id-number">ID Number</label>
@@ -82,10 +82,7 @@
                   <td class="table-action-cell">
                     <div class="d-flex flex-wrap gap-2">
                       <button class="btn btn-sm btn-outline-light" data-edit-user="{{ user.id }}" type="button">Edit</button>
-                      <form method="post" action="{{ url_for('capture_user', user_id=user.id) }}">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button class="btn btn-sm btn-outline-light">Capture</button>
-                      </form>
+                      <button class="btn btn-sm btn-outline-light" data-capture-user="{{ user.id }}" data-capture-name="{{ user.full_name or user.username }}" type="button">Capture</button>
                       <form method="post" action="{{ url_for('delete_user', user_id=user.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="btn btn-sm btn-outline-danger">Delete</button>
@@ -104,7 +101,7 @@
                           <div class="col-md-6"><label class="form-label">Email</label><input type="email" name="email" class="form-control" value="{{ user.email }}" required></div>
                           <div class="col-md-6"><label class="form-label">ID Number</label><input name="id_number" class="form-control" value="{{ user.id_number }}" required></div>
                           <div class="col-md-6"><label class="form-label">Role</label><select name="role" class="form-select"><option value="student" {% if user.role == 'student' %}selected{% endif %}>Student</option><option value="employee" {% if user.role == 'employee' %}selected{% endif %}>Employee</option><option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Admin</option></select></div>
-                          <div class="col-md-6"><label class="form-label">New Password</label><input type="password" name="password" class="form-control" placeholder="Leave blank to keep current"></div>
+                          <div class="col-md-6"><label class="form-label">New Password</label><div class="password-field"><input type="password" name="password" class="form-control" placeholder="Leave blank to keep current" autocomplete="new-password"><button type="button" data-toggle-password aria-label="Show password"></button></div></div>
                           <div class="col-md-12"><label class="form-label">Profile Avatar</label><input type="file" name="avatar" class="form-control"></div>
                           <div class="col-12"><button class="btn btn-accent">Save changes</button></div>
                         </div>

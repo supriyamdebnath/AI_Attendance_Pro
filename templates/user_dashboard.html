@@ -1,11 +1,92 @@
-<!doctype html><html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>User Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/attendance-ui.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
-</head><body><div class="app-shell"><aside class="sidebar">{% include 'sidebar.html' %}</aside><main class="main-panel">{% include 'topbar.html' %}
-<section class="dashboard-grid">
-<article class="glass panel profile-card"><img class="avatar avatar-lg" src="{{ url_for('static', filename='images/avatars/' + avatar_for(auth_user)) }}"><div><p class="muted mb-1">Welcome back</p><h1 class="hero-title">{{ auth_user.full_name or auth_user.username }}</h1><p class="mb-0">{{ auth_user.email }}</p></div></article>
-<article class="glass panel d-flex align-items-center justify-content-between gap-3"><div><p class="muted mb-1">Attendance percentage</p><h2>{{ percentage }}%</h2><p class="mb-0 muted">Last mark: {{ last_attendance.time.strftime('%H:%M:%S') if last_attendance else 'No record yet' }}</p></div><div class="circle-stat" style="--value: {{ percentage }}"><strong>{{ percentage }}%</strong></div></article>
-</section>
-<section class="dashboard-grid"><article class="glass panel"><h2 class="section-title">Attendance history</h2><div class="table-responsive"><table class="table"><thead><tr><th>Date</th><th>Time</th><th>Status</th></tr></thead><tbody>{% for row in history %}<tr><td>{{ row.date }}</td><td>{{ row.time.strftime('%H:%M:%S') }}</td><td><span class="badge-soft">{{ row.status }}</span></td></tr>{% else %}<tr><td colspan="3" class="muted">No records yet.</td></tr>{% endfor %}</tbody></table></div></article><article class="glass panel"><h2 class="section-title">Trend</h2><div style="height:320px"><canvas id="userChart"></canvas></div></article></section>
-</main></div><script src="https://cdn.jsdelivr.net/npm/chart.js"></script><script src="{{ url_for('static', filename='js/app.js') }}"></script><script src="{{ url_for('static', filename='js/charts.js') }}"></script><script>attendanceChart("userChart", {{ chart|tojson }}, "Personal check-ins");</script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>User Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/attendance-ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">{% include 'sidebar.html' %}</aside>
+    <main class="main-panel">
+      {% include 'topbar.html' %}
+
+      <section class="dashboard-grid student-hero-grid">
+        <article class="glass panel profile-card">
+          <img class="avatar avatar-lg" src="{{ url_for('static', filename='images/avatars/' + avatar_for(auth_user)) }}">
+          <div>
+            <p class="muted mb-1">Welcome back</p>
+            <h1 class="hero-title">{{ auth_user.full_name or auth_user.username }}</h1>
+            <p class="mb-0">{{ auth_user.email }}</p>
+          </div>
+        </article>
+
+        <article class="glass panel attendance-status-card">
+          <p class="eyebrow mb-1">Today</p>
+          <h2 class="section-title">Attendance Marked for Today</h2>
+          {% if today_attendance %}
+            <div class="identity-state">Attendance already recorded for today</div>
+            <dl class="status-list">
+              <div><dt>Date</dt><dd>{{ today_attendance.date }}</dd></div>
+              <div><dt>Status</dt><dd><span class="badge-soft">{{ today_attendance.status }}</span></dd></div>
+              <div><dt>Time</dt><dd>{{ today_attendance.time.strftime('%H:%M:%S') }}</dd></div>
+            </dl>
+          {% else %}
+            <div class="identity-state">Attendance not marked yet</div>
+            <dl class="status-list">
+              <div><dt>Date</dt><dd>{{ today_date }}</dd></div>
+              <div><dt>Status</dt><dd><span class="muted">Pending</span></dd></div>
+              <div><dt>Time</dt><dd>-</dd></div>
+            </dl>
+          {% endif %}
+        </article>
+
+        <article class="glass panel attendance-score-card">
+          <div>
+            <p class="muted mb-1">Attendance percentage</p>
+            <h2>{{ percentage }}%</h2>
+            <p class="mb-0 muted">Last mark: {{ last_attendance.time.strftime('%H:%M:%S') if last_attendance else 'No record yet' }}</p>
+          </div>
+          <div class="circle-stat" style="--value: {{ percentage }}"><strong>{{ percentage }}%</strong></div>
+        </article>
+      </section>
+
+      <section class="dashboard-grid student-content-grid">
+        <article class="glass panel">
+          <h2 class="section-title">Own Attendance History</h2>
+          <div class="table-responsive">
+            <table class="table attendance-records-table">
+              <thead><tr><th>Date</th><th>Status</th><th>Time</th><th>Recognition Accuracy</th></tr></thead>
+              <tbody>
+                {% for row in history %}
+                  <tr data-status="{{ row.status|lower }}" data-date="{{ row.date }}">
+                    <td>{{ row.date }}</td>
+                    <td><span class="badge-soft">{{ row.status }}</span></td>
+                    <td>{{ row.time.strftime('%H:%M:%S') }}</td>
+                    <td>{{ row.recognition_accuracy }}%</td>
+                  </tr>
+                {% else %}
+                  <tr><td colspan="4" class="muted">No records yet.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="glass panel">
+          <h2 class="section-title">Attendance Trend</h2>
+          <div class="chart-tile"><canvas id="userChart"></canvas></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+  <script>attendanceChart("userChart", {{ chart|tojson }}, "Personal check-ins");</script>
+</body>
+</html>

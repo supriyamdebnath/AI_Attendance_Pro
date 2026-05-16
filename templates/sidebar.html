@@ -7,18 +7,27 @@
   <a class="nav-link-custom {% if request.endpoint in ['add_user', 'capture_user', 'delete_user', 'edit_user'] %}active{% endif %}" href="{{ url_for('add_user') }}">Add User</a>
   <a class="nav-link-custom {% if request.endpoint in ['camera_page', 'live_monitoring'] %}active{% endif %}" href="{{ url_for('live_monitoring') }}">Live Monitoring</a>
   <a class="nav-link-custom {% if request.endpoint in ['reports', 'export_csv', 'export_excel'] %}active{% endif %}" href="{{ url_for('reports') }}">Reports</a>
+  <a class="nav-link-custom" href="{{ url_for('admin_dashboard') }}#ai-insights">AI Insights</a>
+  <a class="nav-link-custom" href="#notifications" data-open-notifications>Notifications</a>
   <a class="nav-link-custom {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">Settings</a>
   {% endif %}
   <a class="nav-link-custom {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">Profile</a>
   <a class="nav-link-custom" href="{{ url_for('logout') }}" data-logout-trigger>Logout</a>
 </nav>
+<div class="system-status-widget glass">
+  <div>
+    <span class="status-dot"></span>
+    <strong>AI System Status</strong>
+  </div>
+  <p class="muted mb-0">{{ system_status }}</p>
+</div>
 <div class="logout-modal" data-logout-modal aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
   <div class="logout-dialog glass" role="document">
     <p class="eyebrow mb-2">Secure session</p>
     <h2 class="section-title" id="logout-modal-title">Are you sure you want to logout?</h2>
     <div class="toolbar logout-actions">
-      <button class="btn btn-outline-light" type="button" data-logout-cancel>Cancel</button>
-      <a class="btn btn-accent" href="{{ url_for('logout') }}">Yes Logout</a>
+      <button class="btn btn-outline-light" type="button" data-logout-cancel>No</button>
+      <a class="btn btn-accent" href="{{ url_for('logout') }}">Yes</a>
     </div>
   </div>
 </div>

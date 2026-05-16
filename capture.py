@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import cv2
@@ -16,34 +15,44 @@ def resolve_cascade() -> str:
     return cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 
 
-def capture_faces(user_id: int, limit: int = 40) -> dict[str, object]:
+def save_face_sample_from_frame(user_id: int, frame, limit: int = 40) -> dict[str, object]:
+    """Store one browser-uploaded face sample for training."""
     target_dir = DATASET_DIR / f"user_{user_id}"
     target_dir.mkdir(parents=True, exist_ok=True)
-    cascade = cv2.CascadeClassifier(resolve_cascade())
-    # Hosted Render containers do not provide a physical webcam. This keeps
-    # local Windows capture optimized and lets Linux hosts fail cleanly.
-    backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
-    camera = cv2.VideoCapture(0, backend)
-    if not camera.isOpened():
-        return {"ok": False, "message": "Webcam unavailable."}
+    existing = sorted(target_dir.glob("*.jpg"))
+    if len(existing) >= limit:
+        return {
+            "ok": True,
+            "message": f"Face sample target already has {len(existing)} images.",
+            "captured": len(existing),
+            "complete": True,
+        }
 
-    captured = 0
-    try:
-        while captured < limit:
-            ok, frame = camera.read()
-            if not ok:
-                break
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            faces = cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(80, 80))
-            for x, y, w, h in faces[:1]:
-                face = cv2.resize(gray[y : y + h, x : x + w], (220, 220))
-                captured += 1
-                cv2.imwrite(str(target_dir / f"{captured:03d}.jpg"), face)
-            if captured >= limit:
-                break
-    finally:
-        camera.release()
-    return {"ok": captured > 0, "message": f"Captured {captured} face samples.", "captured": captured}
+    cascade = cv2.CascadeClassifier(resolve_cascade())
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = cascade.detectMultiScale(gray, scaleFactor=1.2, minNeighbors=5, minSize=(80, 80))
+    if len(faces) == 0:
+        return {"ok": False, "message": "No face detected. Keep the face centered and well lit.", "captured": len(existing), "complete": False}
+
+    x, y, w, h = max(faces, key=lambda box: box[2] * box[3])
+    face = cv2.resize(gray[y : y + h, x : x + w], (220, 220), interpolation=cv2.INTER_AREA)
+    next_index = len(existing) + 1
+    cv2.imwrite(str(target_dir / f"{next_index:03d}.jpg"), face)
+    captured = next_index
+    return {
+        "ok": True,
+        "message": f"Captured {captured}/{limit} face samples.",
+        "captured": captured,
+        "complete": captured >= limit,
+    }
+
+
+def capture_faces(user_id: int, limit: int = 40) -> dict[str, object]:
+    return {
+        "ok": False,
+        "message": "Server webcam capture has been replaced by browser-based capture from the Users page.",
+        "captured": 0,
+    }
 
 
 if __name__ == "__main__":

@@ -1,1 +1,61 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Attendance</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}"></head><body><div class="app-shell"><aside class="sidebar">{% include 'sidebar.html' %}</aside><main class="main-panel">{% include 'topbar.html' %}<section class="glass panel"><div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3"><h1 class="hero-title mb-0">Attendance records</h1><div class="search-shell"><span>Search</span><input class="form-control table-filter" data-table-filter data-target="#attendance-table" placeholder="Name, email, ID, role, attendance"><button class="btn btn-sm btn-outline-light" data-clear-search type="button">Clear</button></div></div><div class="filter-strip mb-3" data-filter-for="#attendance-table"><button class="active" data-filter-value="">All</button><button data-filter-value="admin">Admin</button><button data-filter-value="student">Student</button><button data-filter-value="employee">Employee</button><button data-filter-value="present">Present</button><button data-filter-value="absent">Absent</button><input class="form-control" type="date" data-date-filter></div><div class="table-responsive"><table class="table" id="attendance-table"><thead><tr><th>ID Number</th><th>Name</th><th>Role</th><th>Date</th><th>Time</th><th>Status</th><th>Accuracy</th><th>Snapshot</th></tr></thead><tbody>{% for row in rows %}<tr data-role="{{ row.role }}" data-status="{{ row.status|lower }}" data-date="{{ row.date }}"><td>{{ row.id_number or (row.user.id_number if row.user else row.user_id) }}</td><td>{{ row.name }} <span class="visually-hidden">{{ row.user.email if row.user else '' }}</span></td><td>{{ row.role|title }}</td><td>{{ row.date }}</td><td>{{ row.time.strftime('%H:%M:%S') }}</td><td><span class="badge-soft">{{ row.status }}</span></td><td>{{ row.recognition_accuracy }}%</td><td>{% if row.snapshot_path %}<a class="snapshot-link" href="/{{ row.snapshot_path }}" target="_blank">Preview</a>{% else %}<span class="muted">None</span>{% endif %}</td></tr>{% else %}<tr><td colspan="8" class="muted">No attendance found.</td></tr>{% endfor %}</tbody></table></div><p class="muted no-results" data-no-results-for="#attendance-table">No matching records found.</p></section></main></div><script src="{{ url_for('static', filename='js/app.js') }}"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Attendance</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">{% include 'sidebar.html' %}</aside>
+    <main class="main-panel">
+      {% include 'topbar.html' %}
+      <section class="glass panel">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+          <h1 class="hero-title mb-0">Attendance records</h1>
+          <div class="search-shell">
+            <span>Search</span>
+            <input class="form-control table-filter" data-table-filter data-target="#attendance-table" placeholder="Name, email, ID, role, attendance">
+            <button class="btn btn-sm btn-outline-light" data-clear-search type="button">Clear</button>
+          </div>
+        </div>
+        <div class="filter-strip mb-3" data-filter-for="#attendance-table">
+          <button class="active" data-filter-value="">All</button>
+          <button data-filter-value="admin">Admin</button>
+          <button data-filter-value="student">Student</button>
+          <button data-filter-value="employee">Employee</button>
+          <button data-filter-value="present">Present</button>
+          <button data-filter-value="absent">Absent</button>
+          <input class="form-control" type="date" data-date-filter>
+        </div>
+        <div class="table-responsive">
+          <table class="table attendance-records-table" id="attendance-table">
+            <thead><tr><th>ID Number</th><th>Name</th><th>Role</th><th>Date</th><th>Time</th><th>Status</th><th>Recognition Accuracy</th><th>Snapshot</th></tr></thead>
+            <tbody>
+              {% for row in rows %}
+                <tr data-role="{{ row.role }}" data-status="{{ row.status|lower }}" data-date="{{ row.date }}">
+                  <td>{{ row.id_number or (row.user.id_number if row.user else row.user_id) }}</td>
+                  <td>{{ row.name }} <span class="visually-hidden">{{ row.user.email if row.user else '' }}</span></td>
+                  <td>{{ row.role|title }}</td>
+                  <td>{{ row.date }}</td>
+                  <td>{{ row.time.strftime('%H:%M:%S') }}</td>
+                  <td><span class="badge-soft">{{ row.status }}</span></td>
+                  <td>{{ row.recognition_accuracy }}%</td>
+                  <td>{% if row.snapshot_path %}<a class="snapshot-link" href="/{{ row.snapshot_path }}" target="_blank">Preview</a>{% else %}<span class="muted">None</span>{% endif %}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="8" class="muted">No attendance found.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted no-results" data-no-results-for="#attendance-table">No matching records found.</p>
+      </section>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

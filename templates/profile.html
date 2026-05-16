@@ -48,6 +48,14 @@
             <label class="form-label" for="profile-avatar">Profile avatar</label>
             <input id="profile-avatar" type="file" name="avatar" class="form-control">
           </div>
+          <div class="col-md-6">
+            <label class="form-label" for="profile-password">New password</label>
+            <div class="password-field"><input id="profile-password" type="password" name="password" class="form-control" placeholder="Leave blank to keep current" autocomplete="new-password"><button type="button" data-toggle-password aria-label="Show password"></button></div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="profile-confirm-password">Confirm password</label>
+            <div class="password-field"><input id="profile-confirm-password" type="password" name="confirm_password" class="form-control" placeholder="Repeat new password" autocomplete="new-password"><button type="button" data-toggle-password aria-label="Show password"></button></div>
+          </div>
           <div class="col-12">
             <button class="btn btn-accent">Save profile</button>
           </div>
