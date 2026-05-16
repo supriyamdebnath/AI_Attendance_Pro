@@ -1,0 +1,24 @@
+<div class="brand"><img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo"><span>Attendance Pro</span></div>
+<div class="profile-card mt-4"><img class="avatar" src="{{ url_for('static', filename='images/avatars/' + avatar_for(auth_user)) }}"><div><strong>{{ auth_user.full_name or auth_user.username }}</strong><div class="muted">{{ auth_user.role|title }} - {{ auth_user.id_number }}</div></div></div>
+<nav class="nav-stack">
+  <a class="nav-link-custom {% if request.endpoint in ['admin_dashboard', 'user_dashboard'] %}active{% endif %}" href="{{ url_for('admin_dashboard' if auth_user.role == 'admin' else 'user_dashboard') }}">Dashboard</a>
+  <a class="nav-link-custom {% if request.endpoint == 'attendance_view' %}active{% endif %}" href="{{ url_for('attendance_view') }}">Attendance</a>
+  {% if auth_user.role == 'admin' %}
+  <a class="nav-link-custom {% if request.endpoint in ['add_user', 'capture_user', 'delete_user', 'edit_user'] %}active{% endif %}" href="{{ url_for('add_user') }}">Add User</a>
+  <a class="nav-link-custom {% if request.endpoint in ['camera_page', 'live_monitoring'] %}active{% endif %}" href="{{ url_for('live_monitoring') }}">Live Monitoring</a>
+  <a class="nav-link-custom {% if request.endpoint in ['reports', 'export_csv', 'export_excel'] %}active{% endif %}" href="{{ url_for('reports') }}">Reports</a>
+  <a class="nav-link-custom {% if request.endpoint == 'settings' %}active{% endif %}" href="{{ url_for('settings') }}">Settings</a>
+  {% endif %}
+  <a class="nav-link-custom {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}">Profile</a>
+  <a class="nav-link-custom" href="{{ url_for('logout') }}" data-logout-trigger>Logout</a>
+</nav>
+<div class="logout-modal" data-logout-modal aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="logout-modal-title">
+  <div class="logout-dialog glass" role="document">
+    <p class="eyebrow mb-2">Secure session</p>
+    <h2 class="section-title" id="logout-modal-title">Are you sure you want to logout?</h2>
+    <div class="toolbar logout-actions">
+      <button class="btn btn-outline-light" type="button" data-logout-cancel>Cancel</button>
+      <a class="btn btn-accent" href="{{ url_for('logout') }}">Yes Logout</a>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Attendance Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
+<body>
+  <main class="login-wrap">
+    <section class="glass login-card">
+      <div class="login-brand">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo">
+        <div>
+          <p class="muted mb-1">AI Attendance Pro</p>
+          <h1 class="hero-title">Secure sign in</h1>
+        </div>
+      </div>
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      <form method="post" class="d-grid gap-3">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+          <label class="form-label" for="login-username">Username</label>
+          <input id="login-username" class="form-control form-control-lg" name="username" placeholder="Enter your username" autocomplete="username">
+        </div>
+        <div>
+          <label class="form-label" for="login-password">Password</label>
+          <div class="password-field"><input id="login-password" class="form-control form-control-lg" name="password" type="password" placeholder="Enter your password" autocomplete="current-password"><button type="button" data-toggle-password aria-label="Show password">Show</button></div>
+        </div>
+        <label class="d-flex align-items-center gap-2 form-check-label"><input class="form-check-input mt-0" type="checkbox" name="remember"> Remember this device</label>
+        <button class="btn btn-accent btn-lg">Sign in</button>
+      </form>
+      <div class="d-flex justify-content-between mt-3 muted">
+        <span>Role-aware access</span>
+        <a href="{{ url_for('forgot_password') }}">Forgot password?</a>
+      </div>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

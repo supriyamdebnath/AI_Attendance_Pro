@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Monitoring</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/attendance-ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">{% include 'sidebar.html' %}</aside>
+    <main class="main-panel">
+      {% include 'topbar.html' %}
+      <section class="monitor-grid">
+        <article class="glass panel live-console">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+            <div>
+              <p class="eyebrow mb-1">Enterprise live monitoring</p>
+              <h1 class="hero-title">Live Monitoring</h1>
+            </div>
+            <div class="toolbar">
+              <button class="btn btn-accent" data-camera-start>Camera ON</button>
+              <button class="btn btn-outline-light" data-camera-stop>Camera OFF</button>
+              <button class="btn btn-outline-light" data-snapshot>Capture Snapshot</button>
+              <button class="btn btn-outline-light" data-retake-snapshot>Retake Snapshot</button>
+            </div>
+          </div>
+          <div class="camera-stage camera-stage-large live-stage" data-camera-stage>
+            <img data-video-feed class="camera-frame" alt="Live webcam recognition feed">
+            <div class="camera-placeholder" data-camera-placeholder>
+              <strong>Live recognition feed</strong>
+              <span>Press Camera ON to start secure attendance monitoring.</span>
+            </div>
+            <div class="hud hud-left"><span data-camera-status>{{ recognition_status }}</span></div>
+            <div class="hud hud-right">FPS <span data-fps>0</span></div>
+          </div>
+        </article>
+        <aside class="glass panel identity-panel">
+          <p class="eyebrow mb-1">Recognition result</p>
+          <h2 class="section-title">Identity Card</h2>
+          <div class="identity-state" data-recognition-state>Scanning standby</div>
+          <dl class="identity-list">
+            <div><dt>Full Name</dt><dd data-live-name>-</dd></div>
+            <div><dt>Role</dt><dd data-live-role>-</dd></div>
+            <div><dt>ID Number</dt><dd data-live-id>-</dd></div>
+            <div><dt>Date</dt><dd data-live-date>-</dd></div>
+            <div><dt>Time</dt><dd data-live-time>-</dd></div>
+            <div><dt>Status</dt><dd><span class="badge-soft" data-live-status>Waiting</span></dd></div>
+            <div><dt>Recognition Accuracy</dt><dd><span data-live-accuracy>0</span>%</dd></div>
+          </dl>
+          <div class="snapshot-preview">
+            <img data-snapshot-preview alt="Latest attendance snapshot">
+            <span data-snapshot-empty>No snapshot captured yet</span>
+          </div>
+          <div class="toolbar mt-3">
+            <button class="btn btn-outline-light" data-download-snapshot type="button">Download Snapshot</button>
+          </div>
+          <h2 class="section-title mt-4">Live Recognition Logs</h2>
+          <div class="activity-list" data-live-logs>
+            <div class="activity-item"><span>Monitoring standby</span><small>Waiting for camera</small></div>
+          </div>
+        </aside>
+      </section>
+      <div class="success-pop glass" data-success-pop>
+        <strong>Attendance Marked Successfully</strong>
+        <span data-success-detail></span>
+      </div>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

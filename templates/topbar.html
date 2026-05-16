@@ -1,0 +1,23 @@
+<header class="topbar">
+  <div><p class="muted mb-1">AI-Based Smart Attendance</p><h1 class="hero-title mb-0">{{ auth_user.role|title }} workspace</h1></div>
+  <div class="d-flex align-items-center gap-3">
+    <div class="topbar-menu">
+      <button class="glass notification-pill" data-notification-toggle type="button">Notifications <span class="notification-badge" data-notification-badge>{{ notification_count }}</span></button>
+      <div class="dropdown-panel notification-panel glass" data-notification-panel>
+        <div class="d-flex justify-content-between align-items-center mb-2"><strong>Notifications</strong><span class="muted">Live</span></div>
+        <div class="activity-list" data-notification-list>
+          {% for item in notifications %}<div class="activity-item"><span>{{ item.action }}</span><small>{{ item.time }}</small></div>{% else %}<p class="muted mb-0">No notifications yet.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="topbar-menu">
+      <button class="avatar-button" data-profile-toggle type="button"><img class="avatar" src="{{ url_for('static', filename='images/avatars/' + avatar_for(auth_user)) }}"></button>
+      <div class="dropdown-panel profile-panel glass" data-profile-panel>
+        <div class="profile-card mb-3"><img class="avatar avatar-lg" src="{{ url_for('static', filename='images/avatars/' + avatar_for(auth_user)) }}"><div><strong>{{ auth_user.full_name or auth_user.username }}</strong><div class="muted">{{ auth_user.role|title }}</div><div class="muted">{{ auth_user.email }}</div><div class="muted">{{ auth_user.id_number }}</div></div></div>
+        <a class="dropdown-action" href="{{ url_for('profile') }}">My Profile</a>
+        {% if auth_user.role == 'admin' %}<a class="dropdown-action" href="{{ url_for('settings') }}">Settings</a>{% endif %}
+        <a class="dropdown-action" href="{{ url_for('logout') }}" data-logout-trigger>Logout</a>
+      </div>
+    </div>
+  </div>
+</header>

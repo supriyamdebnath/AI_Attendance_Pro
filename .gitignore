@@ -1,0 +1,11 @@
+__pycache__/
+.env
+.venv/
+*.pyc
+*.log
+static/uploads/*
+!static/uploads/.gitkeep
+static/snapshots/*
+!static/snapshots/.gitkeep
+trainer/trainer.yml
+users.db

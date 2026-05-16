@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Profile</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/attendance-ui.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">{% include 'sidebar.html' %}</aside>
+    <main class="main-panel">
+      {% include 'topbar.html' %}
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+      <section class="dashboard-grid">
+        <article class="glass panel profile-card">
+          <img class="avatar avatar-lg" src="{{ url_for('static', filename='images/avatars/' + avatar_for(user)) }}">
+          <div>
+            <h1 class="hero-title">{{ user.full_name }}</h1>
+            <p class="muted mb-2">{{ user.email }}</p>
+            <span class="badge-soft">{{ user.role|title }} - {{ user.id_number }}</span>
+          </div>
+        </article>
+        <article class="glass panel">
+          <p class="muted mb-1">Attendance score</p>
+          <h2>{{ percentage }}%</h2>
+          <div class="progress-shell"><div class="progress-value" style="width: {{ percentage }}%"></div></div>
+        </article>
+      </section>
+      <section class="glass panel mt-3">
+        <h2 class="section-title">Profile settings</h2>
+        <form method="post" enctype="multipart/form-data" class="row g-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="col-md-6">
+            <label class="form-label" for="profile-full-name">Full name</label>
+            <input id="profile-full-name" name="full_name" class="form-control" value="{{ user.full_name }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="profile-email">Email address</label>
+            <input id="profile-email" type="email" name="email" class="form-control" value="{{ user.email }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="profile-avatar">Profile avatar</label>
+            <input id="profile-avatar" type="file" name="avatar" class="form-control">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-accent">Save profile</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

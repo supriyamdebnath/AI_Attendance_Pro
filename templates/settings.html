@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Settings</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet"><link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='css/responsive.css') }}"></head><body><div class="app-shell"><aside class="sidebar">{% include 'sidebar.html' %}</aside><main class="main-panel">{% include 'topbar.html' %}
+<section class="stat-grid">
+  <article class="glass metric"><span>SMTP Configuration Status</span><strong>{{ 'Configured' if smtp_ready else 'Needs Setup' }}</strong></article>
+  <article class="glass metric"><span>AI Model Status</span><strong>{{ 'Ready' if trained else 'Pending' }}</strong></article>
+  <article class="glass metric"><span>Camera Status</span><strong>{{ 'Camera ON' if camera_enabled else 'Camera OFF' }}</strong></article>
+  <article class="glass metric"><span>Database Status</span><strong>{{ 'Healthy' if db_ok else 'Check DB' }}</strong></article>
+</section>
+<section class="dashboard-grid">
+  <article class="glass panel"><p class="eyebrow mb-1">Infrastructure</p><h1 class="hero-title mb-3">System Health</h1><div class="health-grid"><div><span>Recognition Engine</span><strong>{{ 'Online' if trained else 'Training Required' }}</strong></div><div><span>Storage Usage</span><strong>{{ storage_mb }} MB</strong></div><div><span>Backup Options</span><strong>CSV / Excel / PDF</strong></div><div><span>Gmail Integration</span><strong>{{ 'Ready' if smtp_ready else 'Environment Pending' }}</strong></div></div><button class="btn btn-accent mt-3" data-test-smtp>Test SMTP</button></article>
+  <article class="glass panel"><h2 class="section-title">Operational Console</h2><p class="muted">Use `.env` for `MAIL_USERNAME`, `MAIL_PASSWORD`, and `SECRET_KEY`. Gmail SMTP runs on `smtp.gmail.com:587` with TLS. Snapshots are stored in `static/snapshots/` and attendance exports remain available from Reports.</p><div class="toolbar"><a class="btn btn-outline-light" href="{{ url_for('export_csv') }}">Backup CSV</a><a class="btn btn-outline-light" href="{{ url_for('export_excel') }}">Backup Excel</a><a class="btn btn-outline-light" href="{{ url_for('export_pdf') }}">Backup PDF</a></div></article>
+</section>
+</main></div><script src="{{ url_for('static', filename='js/app.js') }}"></script></body></html>
