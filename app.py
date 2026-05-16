@@ -87,7 +87,10 @@ class ThreadedCamera:
     def start(self) -> bool:
         if self.running:
             return True
-        self.capture = cv2.VideoCapture(self.source, cv2.CAP_DSHOW)
+        # Render/Linux hosts usually do not expose a physical webcam. The route
+        # fails gracefully there, while local Windows keeps the DirectShow path.
+        backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+        self.capture = cv2.VideoCapture(self.source, backend)
         if not self.capture or not self.capture.isOpened():
             self.stop()
             return False
@@ -128,6 +131,9 @@ camera_stream = ThreadedCamera()
 
 
 def bootstrap_runtime() -> None:
+    # Render free tier filesystems are ephemeral between deploys/restarts.
+    # Keep generated snapshots, reports, SQLite data, and trainer files out of Git;
+    # this bootstrap recreates the required folders so gunicorn can start cleanly.
     AVATAR_DIR.mkdir(parents=True, exist_ok=True)
     ATTENDANCE_REPORT_DIR.mkdir(parents=True, exist_ok=True)
     SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -972,4 +978,4 @@ def shutdown_session(_exception=None):
 
 
 if __name__ == "__main__":
-    app.run(debug=os.getenv("FLASK_DEBUG", "1") == "1", host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
+    app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1", host="0.0.0.0", port=int(os.getenv("PORT", "5000")))

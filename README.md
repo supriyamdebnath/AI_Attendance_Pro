@@ -1,19 +1,18 @@
-<<<<<<< HEAD
 # AI Attendance Pro
 
-Production-oriented Flask attendance dashboard with role-based authentication, threaded OpenCV face recognition, SQLite persistence, live monitoring, attendance snapshots, reports, avatar profiles, Gmail OTP password reset, and a responsive dark blue SaaS UI.
+Production-ready Flask attendance dashboard with role-based authentication, threaded OpenCV face recognition, SQLite persistence, live monitoring, attendance snapshots, reports, avatar profiles, Gmail OTP password reset, and a responsive SaaS-style UI.
 
 ## Stack
 
 - Python 3.11
-- Flask + Flask-SQLAlchemy
-- SQLite
-- OpenCV Haarcascade + LBPH recognizer
+- Flask, Flask-SQLAlchemy, Gunicorn
+- SQLite for the current lightweight deployment profile
+- OpenCV Haarcascade + LBPH recognizer via `opencv-contrib-python-headless`
 - Bootstrap 5, Chart.js, custom CSS/JavaScript
-- CSV and Excel exports
-- Flask-Mail + python-dotenv for secure reset emails
+- CSV, Excel, and PDF exports
+- Flask-Mail + python-dotenv for Gmail OTP password reset
 
-## Setup
+## Local Setup
 
 1. Create and activate a virtual environment.
 2. Install dependencies:
@@ -22,13 +21,7 @@ Production-oriented Flask attendance dashboard with role-based authentication, t
 pip install -r requirements.txt
 ```
 
-For the new SMTP reset flow specifically, make sure these packages are installed:
-
-```bash
-pip install Flask-Mail python-dotenv
-```
-
-3. Create a `.env` file from `.env.example` and set:
+3. Create `.env` from `.env.example`:
 
 ```text
 SECRET_KEY=replace-with-a-long-random-secret
@@ -40,101 +33,87 @@ MAIL_PASSWORD=your-gmail-app-password
 MAIL_DEFAULT_SENDER=your-gmail-address@gmail.com
 ```
 
-Use a Gmail app password for `MAIL_PASSWORD`. Do not put real secrets in source control.
+Use a Gmail app password for `MAIL_PASSWORD`. Do not commit real secrets.
 
-4. Initialize the database:
+4. Initialize or migrate the local database:
 
 ```bash
 python database.py
 ```
 
-5. Start the web app:
+5. Start the app:
 
 ```bash
 python app.py
 ```
 
-6. Open the local app in a browser at `http://127.0.0.1:5000`.
+6. Open `http://127.0.0.1:5000`.
 
 Default bootstrap admin:
 
 - Username: `admin`
 - Password: `Admin@12345`
 
-Change that password immediately in a real deployment.
+Change the default password immediately in any real deployment.
+
+## Render Deployment
+
+This project is prepared for Render using:
+
+- `Procfile`: `web: gunicorn app:app`
+- `runtime.txt`: Python 3.11
+- `requirements.txt`: includes Gunicorn and headless OpenCV contrib support
+
+Recommended Render settings:
+
+- Environment: Python
+- Build command: `pip install -r requirements.txt`
+- Start command: `gunicorn app:app`
+- Required env var: `SECRET_KEY`
+- Optional SMTP env vars: `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER`
+
+Render free tier notes:
+
+- The free filesystem is ephemeral. Runtime files such as `users.db`, snapshots, reports, and `trainer/trainer.yml` can disappear after redeploys or restarts.
+- For demos, this lightweight SQLite setup is fine. For production, move persistence to Render PostgreSQL or another managed database and use object storage for snapshots/training artifacts.
+- Webcam access is normally unavailable inside hosted Render containers. Live camera recognition works best on local machines, edge devices, or a browser-upload/websocket camera flow.
+- `opencv-contrib-python-headless` is used intentionally. It keeps LBPH recognition support while avoiding GUI OpenCV libraries that often fail on server hosts.
 
 ## Face Workflow
 
 1. Sign in as admin.
-2. Open **Users** and register a person with full name, username, email, password, ID number, role, and optional avatar.
-3. Click **Capture** to collect face samples from the webcam.
-4. Return to the admin dashboard and click **Train model**.
-5. Open **Live Monitoring** or use the dashboard camera controls.
+2. Add a user with full name, username, email, password, ID number, role, and optional avatar.
+3. Click Capture to collect face samples from the webcam.
+4. Train the model from the dashboard or run `python train.py`.
+5. Open Live Monitoring.
 6. Recognized users are marked present once per day in SQLite, `attendance.csv`, and `Attendance/attendance_<year>.csv`.
 7. Snapshots are saved in `static/snapshots/` and linked to attendance rows.
 
-You can also train from the terminal:
+## Runtime Files
 
-```bash
-python train.py
-```
+These are intentionally ignored by Git:
 
-## Files Generated at Runtime
-
+- `venv/`, `.venv/`
+- `__pycache__/`, `*.pyc`
+- `.env`
 - `users.db`
 - `trainer/trainer.yml`
-- attendance snapshots in `static/snapshots/`
-- additional user avatars in `static/images/avatars/`
-- report exports generated on demand
+- generated snapshots in `static/snapshots/` and `uploads/snapshots/`
+- generated reports in `Attendance/reports/`
 
-## Password Reset / SMTP
-
-The reset flow uses Gmail OTP verification and is SMTP-ready. Configure:
-
-```text
-SECRET_KEY=
-MAIL_USERNAME=
-MAIL_PASSWORD=
-```
-
-The app defaults to Gmail SMTP at `smtp.gmail.com:587` with TLS. Without SMTP configuration, OTP values are logged by Flask so the flow remains testable locally. Invalid credentials or connectivity errors are shown as professional alerts.
-
-## Reports
-
-Admins can:
-
-- view attendance history
-- export CSV
-- export Excel `.xlsx`
-- export PDF
-- search users
-- inspect attendance trends from dashboard charts
-- preview attendance snapshots
-- review role-wise attendance counts
+The `.gitkeep` files preserve required runtime folders without committing generated data.
 
 ## Troubleshooting
 
-- `opencv-contrib-python is required for LBPH training`
-  Install the dependency from `requirements.txt`.
-- `No captured face images found`
-  Capture user samples first.
-- `Webcam unavailable`
-  Close other apps using the camera and retry.
-- `trainer.yml` missing
-  Train the model after collecting samples.
-- Empty recognition feed
-  Confirm webcam access, then restart the camera controls.
-- Duplicate user error
-  Use a unique username, email, and ID number.
+- `opencv-contrib-python is required for LBPH training`: install from `requirements.txt`; the headless contrib package provides `cv2.face`.
+- `No captured face images found`: capture user samples first.
+- `Webcam unavailable`: close other camera apps locally; hosted Render containers typically cannot access a physical webcam.
+- `trainer.yml missing`: train the model after collecting samples.
+- SMTP errors: confirm Gmail app password and mail environment variables.
 
-## Deployment Notes
+## Production Hardening
 
-- Replace `SECRET_KEY`.
-- Configure SMTP securely.
-- Run behind a real WSGI server and reverse proxy.
-- Store environment values outside source control.
-- For mobile apps, the backend routes and exports are ready to be wrapped behind token-based APIs later without changing the core data model.
-=======
-# AI_Attendance_Pro
-
->>>>>>> f78c6837f51d94bf10b61b02e3c96f32d89955cf
+- Replace `SECRET_KEY` with a strong environment value.
+- Use managed PostgreSQL for durable production data.
+- Move snapshots and trained models to object storage for production deployments.
+- Keep `.env`, databases, generated snapshots, and local virtual environments out of Git.

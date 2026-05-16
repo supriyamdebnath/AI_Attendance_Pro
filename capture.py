@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import cv2
@@ -19,7 +20,10 @@ def capture_faces(user_id: int, limit: int = 40) -> dict[str, object]:
     target_dir = DATASET_DIR / f"user_{user_id}"
     target_dir.mkdir(parents=True, exist_ok=True)
     cascade = cv2.CascadeClassifier(resolve_cascade())
-    camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+    # Hosted Render containers do not provide a physical webcam. This keeps
+    # local Windows capture optimized and lets Linux hosts fail cleanly.
+    backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+    camera = cv2.VideoCapture(0, backend)
     if not camera.isOpened():
         return {"ok": False, "message": "Webcam unavailable."}
 

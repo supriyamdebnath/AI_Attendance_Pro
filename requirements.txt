@@ -1,9 +1,12 @@
 Flask>=3.1.0
 Flask-SQLAlchemy>=3.1.1
 Flask-Mail>=0.10.0
-opencv-contrib-python>=4.10.0
-numpy>=2.1.0
-pandas>=2.2.0
-openpyxl>=3.1.5
+gunicorn>=22.0.0
 itsdangerous>=2.2.0
+numpy>=2.1.0
+openpyxl>=3.1.5
+# Render free instances do not need GUI OpenCV libraries.
+# The contrib headless build keeps LBPH/cv2.face support for recognition.
+opencv-contrib-python-headless>=4.10.0
+pandas>=2.2.0
 python-dotenv>=1.0.1
